@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Level Chain Ladder — Meyers (MCMC)</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Level Chain Ladder — Meyers (MCMC)</h1>
+    <p class="sub">Interactive demo with live MCMC trace and posterior predictive simulation</p>
+  </header>
+
+  <main class="grid">
+    <section class="card" id="data-card">
+      <h2>Data</h2>
+      <div class="row spread">
+        <button id="load-sample">Use Sample Data</button>
+        <div class="smallmuted" id="dims"></div>
+      </div>
+      <div class="triangle-scroll">
+        <table id="triangle-table"></table>
+      </div>
+    </section>
+
+    <section class="card" id="mcmc-card">
+      <h2>MCMC Control</h2>
+      <form id="mcmc-form" onsubmit="return false;">
+        <div class="form-grid">
+          <label>Iterations <input type="number" id="iterations" value="5000" min="100" step="100" /></label>
+          <label>Burn-in <input type="number" id="burn_in" value="2500" min="0" step="100" /></label>
+          <label>Thin <input type="number" id="thin" value="5" min="1" step="1" /></label>
+          <label>Adapt iters <input type="number" id="adapt" value="500" min="0" step="50" /></label>
+          <label>Chains <input type="number" id="chains" value="1" min="1" step="1" /></label>
+        </div>
+        <div class="row gap">
+          <button id="run-mcmc">Run MCMC</button>
+          <button id="stop-mcmc" class="secondary">Stop</button>
+          <div class="smallmuted" id="tau-info"></div>
+        </div>
+      </form>
+
+      <div class="plot-block">
+        <div class="row spread">
+          <div class="plot-title">Live Traces</div>
+          <div class="smallmuted" id="trace-meta"></div>
+        </div>
+        <div id="trace-dashboard">
+          <div class="trace-row">
+            <div class="trace-cell">
+              <div class="trace-label">logELR</div>
+              <canvas id="trace-logELR" width="800" height="180"></canvas>
+            </div>
+          </div>
+          <div class="trace-row">
+            <div class="trace-cell">
+              <div class="trace-label">alpha (AY)</div>
+              <div class="small-multiples" id="trace-alpha-grid"></div>
+            </div>
+          </div>
+          <div class="trace-row">
+            <div class="trace-cell">
+              <div class="trace-label">beta (Dev)</div>
+              <div class="small-multiples" id="trace-beta-grid"></div>
+            </div>
+          </div>
+          <div class="trace-row">
+            <div class="trace-cell">
+              <div class="trace-label">sigma (Dev)</div>
+              <div class="small-multiples" id="trace-sigma-grid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="sim-card">
+      <h2>Posterior Predictive — Reserves</h2>
+      <div class="row gap">
+        <button id="simulate">Simulate Reserves</button>
+        <label>Use Draws <input type="number" id="use_draws" value="500" min="10" step="10" /></label>
+        <div class="smallmuted" id="sim-summary"></div>
+      </div>
+
+      <div class="row gap">
+        <label>View Sample Index <input type="number" id="sample-index" value="0" min="0" step="1" /></label>
+        <button id="load-sample-tri" class="secondary">Load Triangle</button>
+        <label>Histogram
+          <select id="hist-kind">
+            <option value="ultimate">Total Ultimate</option>
+            <option value="reserve">Total Reserve</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="plot-block">
+        <div class="plot-title">Distribution</div>
+        <canvas id="hist-canvas" width="800" height="240"></canvas>
+      </div>
+
+      <div class="triangle-scroll">
+        <table id="sim-triangle-table"></table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Model: log C_{w,d} ~ N(alpha_w + beta_d, sigma_d); beta_D=0; sigma monotone via a_i sums; priors from Meyers LCL.</span>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+</body>
+<!--
+UI notes:
+- Live trace shows chosen parameter's path over iterations (SSE updates).
+- Posterior predictive sim: choose how many draws to use, view any triangle.
+- Histogram toggles between total ultimate and total reserve distributions.
+-->
+</html>
