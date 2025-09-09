@@ -108,6 +108,7 @@ function drawHist(canvas, bins, counts) {
 
 // State for live traces (populated after data load)
 const TRACE = { ready: false, xs: [], es: null, W: 0, D: 0, logELR: [], alpha: [], beta: [], sigma: [] };
+const CURRENT_RUN = { iterations: 0, chains: 1 };
 
 function buildTraceDashboard(W, D) {
   TRACE.ready = true;
@@ -170,6 +171,13 @@ function openSSE() {
       if (msg.type === 'progress') {
         const it = msg.iter;
         TRACE.xs.push(it);
+        // Progress bar
+        const chains = CURRENT_RUN.chains || 1;
+        const iters = CURRENT_RUN.iterations || 1;
+        const total = chains * iters;
+        const curr = (Math.max(0, (msg.chain || 1) - 1) * iters) + it;
+        const prog = document.getElementById('mcmc-progress');
+        if (prog) { prog.max = total; prog.value = Math.min(total, curr); }
         const tb = msg.traceBundle || {};
         // logELR
         if (typeof tb.logELR === 'number') {
@@ -204,6 +212,10 @@ function openSSE() {
       } else if (msg.type === 'chain_start') {
         document.getElementById('trace-meta').innerText = `Chain ${msg.chain} started`;
       } else if (msg.type === 'chain_done') {
+        const chains = CURRENT_RUN.chains || 1;
+        const iters = CURRENT_RUN.iterations || 1;
+        const prog = document.getElementById('mcmc-progress');
+        if (prog) { prog.max = chains * iters; prog.value = Math.min(chains * iters, (msg.chain || 1) * iters); }
         document.getElementById('trace-meta').innerText = `Chain ${msg.chain} done; draws=${msg.draws}`;
       } else if (msg.type === 'done') {
         document.getElementById('trace-meta').innerText = `MCMC complete`;
@@ -222,6 +234,10 @@ async function startMCMC() {
     chains: Number(document.getElementById('chains').value),
     update_every: 10,
   };
+  CURRENT_RUN.iterations = payload.iterations;
+  CURRENT_RUN.chains = payload.chains;
+  const prog = document.getElementById('mcmc-progress');
+  if (prog) { prog.max = payload.iterations * payload.chains; prog.value = 0; }
   await fetchJSON('/api/start_mcmc', { method: 'POST', body: JSON.stringify(payload) });
   openSSE();
 }
@@ -246,6 +262,17 @@ async function loadSimTriangle() {
   const idx = Number(document.getElementById('sample-index').value);
   const data = await fetchJSON(`/api/sim_sample?i=${idx}`);
   buildTriangleTable(document.getElementById('sim-triangle-table'), data.triangle);
+  // Render parameters
+  const p = data.params || {};
+  const fmtArr = (arr, k) => (Array.isArray(arr) ? `${k}: [${arr.map(v => Number(v).toFixed(3)).join(', ')}]` : `${k}: —`);
+  const txt = [
+    `logELR: ${p.logELR !== undefined ? Number(p.logELR).toFixed(4) : '—'}`,
+    fmtArr(p.alpha, 'alpha'),
+    fmtArr(p.beta, 'beta'),
+    fmtArr(p.sigma, 'sigma'),
+  ].join('\n');
+  const el = document.getElementById('params-content');
+  if (el) el.textContent = txt;
 }
 
 function onHistKindChange() {

@@ -13,6 +13,8 @@ from lcl_mcmc import (
     LCLPosteriorSamples,
     build_sample_dataset,
     simulate_triangles_from_samples,
+    a_to_sigma,
+    to_full_beta,
 )
 
 
@@ -196,7 +198,21 @@ def api_sim_sample():
     key = str(idx)
     if key not in tri_map:
         return jsonify({"ok": False, "error": f"Sample {idx} not available."}), 404
-    return jsonify({"ok": True, "triangle": tri_map[key]})
+    # Fetch parameters for this draw index
+    try:
+        alpha, beta_free, a, logELR = STATE.samples.get_draw(idx)
+        beta_full = to_full_beta(beta_free, STATE.data.D)
+        sigma_full = a_to_sigma(a)
+        params = {
+            "alpha": [float(v) for v in alpha.tolist()],
+            "beta": [float(v) for v in beta_full.tolist()],
+            "sigma": [float(v) for v in sigma_full.tolist()],
+            "logELR": float(logELR),
+        }
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Params unavailable for sample {idx}: {e}"}), 500
+
+    return jsonify({"ok": True, "triangle": tri_map[key], "params": params})
 
 
 def main():
