@@ -219,6 +219,8 @@ function openSSE() {
         document.getElementById('trace-meta').innerText = `Chain ${msg.chain} done; draws=${msg.draws}`;
       } else if (msg.type === 'done') {
         document.getElementById('trace-meta').innerText = `MCMC complete`;
+        const prog = document.getElementById('mcmc-progress');
+        if (prog) { prog.value = prog.max; }
         es.close(); TRACE.es = null;
       }
     } catch {}
@@ -297,5 +299,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadData();
   } catch (e) {
     document.getElementById('dims').innerText = `Failed to load data: ${e}`;
+  }
+  const paramsEl = document.getElementById('params-content');
+  if (paramsEl) {
+    paramsEl.textContent = 'Load a sample triangle to view its parameters.';
   }
 });

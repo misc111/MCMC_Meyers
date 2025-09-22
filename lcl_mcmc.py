@@ -6,6 +6,7 @@ import threading
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
+import chainladder as cl
 import numpy as np
 
 
@@ -23,44 +24,61 @@ class LCLData:
     premiums: np.ndarray  # shape (W,)
 
 
-def build_obs_mask(W: int, D: int) -> np.ndarray:
-    # Observed if w + d <= D - 1 with zero-based indexes
-    mask = np.zeros((W, D), dtype=bool)
-    for w in range(W):
-        for d in range(D):
-            if (w + d) <= (D - 1):
-                mask[w, d] = True
-    return mask
+def triangle_to_lcl_data(
+    triangle: cl.Triangle,
+    column: Optional[str] = None,
+    premiums: Optional[np.ndarray] = None,
+) -> LCLData:
+    """Convert a chainladder Triangle into the internal LCLData structure."""
+
+    tri = triangle
+    if tri.is_val_tri:
+        tri = tri.val_to_dev()
+    if not tri.is_cumulative:
+        tri = tri.incr_to_cum()
+
+    if column is not None:
+        tri = tri.loc[:, column]
+
+    index_dim, column_dim, origin_dim, dev_dim = tri.shape
+    if index_dim != 1:
+        raise ValueError(
+            f"triangle_to_lcl_data expects a single index dimension, got {index_dim}."
+        )
+    if column_dim != 1:
+        raise ValueError(
+            f"triangle_to_lcl_data expects a single value column, got {column_dim}."
+        )
+
+    # Extract the 2D cumulative triangle
+    C = np.asarray(tri.values[0, 0], dtype=float)
+    obs_mask = np.isfinite(C)
+
+    W, D = C.shape
+
+    if premiums is None:
+        latest = tri.latest_diagonal.values
+        premiums = latest.reshape(-1).astype(float)
+    else:
+        premiums = np.asarray(premiums, dtype=float)
+
+    premiums = np.nan_to_num(premiums, nan=1.0, posinf=1.0, neginf=1.0)
+    if premiums.shape[0] != W:
+        raise ValueError(
+            f"Premium vector length {premiums.shape[0]} does not match origin count {W}."
+        )
+    premiums = np.maximum(1e-3, premiums)
+
+    return LCLData(W=W, D=D, C=C, obs_mask=obs_mask, premiums=premiums)
 
 
 def build_sample_dataset() -> LCLData:
-    # Synthetic but plausible 10x10 cumulative triangle
-    W = 10
-    D = 10
-    rng = np.random.default_rng(42)
-    # Simulate a base ultimate by AY via lognormal on premiums
-    premiums = np.linspace(80, 120, W)
-    logELR_true = -0.3
-    alpha_true = np.log(premiums) + logELR_true + rng.normal(0.0, 0.15, size=W)
-    beta_true = np.linspace(0.6, 0.0, D)
-    sigma_true = np.linspace(0.28, 0.08, D)
-    C = np.zeros((W, D))
-    for w in range(W):
-        last = 0.0
-        for d in range(D):
-            mu = alpha_true[w] + beta_true[d]
-            x = rng.lognormal(mean=mu, sigma=sigma_true[d])
-            # cumulative increasing by dev
-            last = max(last, x)
-            C[w, d] = last
-    obs_mask = build_obs_mask(W, D)
-    # zero out missing cells (not used, but helps visualization)
-    C_vis = C.copy()
-    for w in range(W):
-        for d in range(D):
-            if not obs_mask[w, d]:
-                C_vis[w, d] = np.nan
-    return LCLData(W=W, D=D, C=C_vis, obs_mask=obs_mask, premiums=premiums)
+    # Use chainladder's built-in RAA dataset as the sample triangle
+    sample_tri = cl.load_sample("raa")
+    # Smooth premiums to a reasonable scale for the Bayesian prior
+    latest = sample_tri.latest_diagonal.values.reshape(-1)
+    premiums = np.maximum(1.0, latest / 10.0)
+    return triangle_to_lcl_data(sample_tri, premiums=premiums)
 
 
 # --------------------------
@@ -416,12 +434,16 @@ def simulate_triangles_from_samples(
     totals_ultimate: List[float] = []
     totals_reserve: List[float] = []
 
-    # Latest observed cumulative per AY (last observed dev)
+    # Latest observed cumulative per AY (last observed dev based on mask)
     latest_obs = np.zeros(W)
     for w in range(W):
-        # last observed dev index for AY w is D-1-w (since w+d<=D-1)
-        last_d = min(D - 1, D - 1 - w)
-        latest_obs[w] = float(data.C[w, last_d]) if np.isfinite(data.C[w, last_d]) else 0.0
+        observed_devs = np.where(data.obs_mask[w])[0]
+        if observed_devs.size > 0:
+            last_d = int(observed_devs.max())
+            val = data.C[w, last_d]
+            latest_obs[w] = float(val) if np.isfinite(val) else 0.0
+        else:
+            latest_obs[w] = 0.0
 
     for idx in indices:
         alpha, beta_free, a, _ = samples.get_draw(idx)
